@@ -63,115 +63,68 @@ pal_status_t pal_crypt_tls_prf_sha256(pal_crypt_t *p_pal_crypt,
     psa_status_t        st;
     psa_key_attributes_t attr   = PSA_KEY_ATTRIBUTES_INIT;
     psa_key_id_t        key_id  = 0;
-
-    uint8_t label_seed[PAL_CRYPT_MAX_LABEL_SEED_LENGTH];
-    size_t  label_seed_len = 0;
-
-    uint8_t a[PAL_CRYPT_SHA256_SIZE];
-    size_t  a_len = 0;
-
-    uint8_t a_next[PAL_CRYPT_SHA256_SIZE];
-    size_t  a_next_len = 0;
-
-    uint8_t h[PAL_CRYPT_SHA256_SIZE];
-    size_t  h_len = 0;
-
-    size_t  produced = 0;
-
+    psa_algorithm_t     alg = PSA_ALG_TLS12_PRF(PSA_ALG_SHA_256);
+    psa_key_derivation_operation_t operation = PSA_KEY_DERIVATION_OPERATION_INIT;
+    do{
 #ifdef OPTIGA_LIB_DEBUG_NULL_CHECK
-    if (p_secret == NULL || p_label == NULL || p_seed == NULL || p_derived_key == NULL) {
-        return PAL_STATUS_INVALID_INPUT;
-    }
+        if (p_secret == NULL || p_label == NULL || p_seed == NULL || p_derived_key == NULL) {
+            break;
+        }
 #endif  // OPTIGA_LIB_DEBUG_NULL_CHECK
 
-    if (pal_psa_init_once() != PSA_SUCCESS) {
-        return PAL_STATUS_FAILURE;
-    }
+        if (pal_psa_init_once() != PSA_SUCCESS) {
+            break;
+        }
 
-    if ((uint32_t)label_length + (uint32_t)seed_length > sizeof(label_seed)) {
-        return PAL_STATUS_INVALID_INPUT;
-    }
+        if ((uint32_t)label_length + (uint32_t)seed_length > PAL_CRYPT_MAX_LABEL_SEED_LENGTH) {
+            break;
+        }
+        /* Import the key */
+        psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_DERIVE);
+        psa_set_key_algorithm(&attr, alg);
+        psa_set_key_type(&attr, PSA_KEY_TYPE_DERIVE);
+        st = psa_import_key(&attr, p_secret, (size_t)secret_length, &key_id);
+        if (st != PSA_SUCCESS){
+            break;
+        }
+        psa_reset_key_attributes(&attr);
 
-    memcpy(label_seed, p_label, label_length);
-    memcpy(label_seed + label_length, p_seed, seed_length);
-    label_seed_len = (size_t)label_length + (size_t)seed_length;
-
-    /* Import HMAC key */
-    psa_set_key_type(&attr, PSA_KEY_TYPE_HMAC);
-    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_SIGN_MESSAGE);
-    psa_set_key_algorithm(&attr, PSA_ALG_HMAC(PSA_ALG_SHA_256));
-
-    st = psa_import_key(&attr, p_secret, (size_t)secret_length, &key_id);
-    psa_reset_key_attributes(&attr);
-    if (st != PSA_SUCCESS) {
-        goto cleanup;
-    }
-
-    st = psa_mac_compute(key_id, PSA_ALG_HMAC(PSA_ALG_SHA_256),
-                         label_seed, label_seed_len,
-                         a, sizeof(a), &a_len);
-    if (st != PSA_SUCCESS || a_len != PAL_CRYPT_SHA256_SIZE) {
-        goto cleanup;
-    }
-
-    while (produced < (size_t)derived_key_length) {
-        psa_mac_operation_t op = PSA_MAC_OPERATION_INIT;
-        size_t to_copy;
-
-        /* HMAC(secret, A(i) || label || seed) */
-        st = psa_mac_sign_setup(&op, key_id, PSA_ALG_HMAC(PSA_ALG_SHA_256));
+        /* Derive the key */
+        st = psa_key_derivation_setup(&operation, alg);
         if (st != PSA_SUCCESS) {
-            (void)psa_mac_abort(&op);
             break;
         }
-
-        st = psa_mac_update(&op, a, a_len);
-        if (st != PSA_SUCCESS) { (void)psa_mac_abort(&op); break; }
-
-        st = psa_mac_update(&op, label_seed, label_seed_len);
-        if (st != PSA_SUCCESS) { (void)psa_mac_abort(&op); break; }
-
-        st = psa_mac_sign_finish(&op, h, sizeof(h), &h_len);
-        if (st != PSA_SUCCESS || h_len != PAL_CRYPT_SHA256_SIZE) {
-            (void)psa_mac_abort(&op);
+        st = psa_key_derivation_set_capacity(&operation, derived_key_length);
+        if (st != PSA_SUCCESS) {
             break;
         }
-
-        to_copy = ((size_t)derived_key_length - produced < PAL_CRYPT_SHA256_SIZE) ?
-                  ((size_t)derived_key_length - produced) : PAL_CRYPT_SHA256_SIZE;
-        memcpy(p_derived_key + produced, h, to_copy);
-        produced += to_copy;
-
-        if (produced >= (size_t)derived_key_length) {
+        st = psa_key_derivation_input_bytes(&operation, PSA_KEY_DERIVATION_INPUT_SEED, 
+                                                p_seed, seed_length); 
+        if (st != PSA_SUCCESS) {
             break;
         }
-
-        /* A(i+1) = HMAC(secret, A(i)). Use a separate buffer because PSA does
-         * not guarantee that input and output buffers may alias. */
-        st = psa_mac_compute(key_id, PSA_ALG_HMAC(PSA_ALG_SHA_256),
-                             a, a_len,
-                             a_next, sizeof(a_next), &a_next_len);
-        if (st != PSA_SUCCESS || a_next_len != PAL_CRYPT_SHA256_SIZE) {
+        st =  psa_key_derivation_input_key(&operation, PSA_KEY_DERIVATION_INPUT_SECRET, key_id); 
+        if (st != PSA_SUCCESS) {
             break;
         }
-        memcpy(a, a_next, a_next_len);
-        a_len = a_next_len;
-    }
-
-    if (st == PSA_SUCCESS && produced == (size_t)derived_key_length) {
+        st = psa_key_derivation_input_bytes(&operation, PSA_KEY_DERIVATION_INPUT_LABEL, 
+                                                p_label, label_length); 
+        if (st != PSA_SUCCESS) {
+            break;
+        }
+        st = psa_key_derivation_output_bytes(&operation, p_derived_key, derived_key_length);
+        if (st != PSA_SUCCESS) {
+            break;
+        }
         return_value = PAL_STATUS_SUCCESS;
-    }
+        
+    } while(FALSE);
 
-cleanup:
+    /* Clean up */
+    psa_key_derivation_abort(&operation);
     if (key_id != 0) {
         (void)psa_destroy_key(key_id);
     }
-
-    /* Zeroize all stack buffers that touched secret material. */
-    mbedtls_platform_zeroize(label_seed, sizeof(label_seed));
-    mbedtls_platform_zeroize(a,          sizeof(a));
-    mbedtls_platform_zeroize(a_next,     sizeof(a_next));
-    mbedtls_platform_zeroize(h,          sizeof(h));
 
     return return_value;
 }
@@ -196,43 +149,44 @@ pal_status_t pal_crypt_encrypt_aes128_ccm(pal_crypt_t *p_pal_crypt,
     psa_key_id_t        key_id  = 0;
     size_t              out_len = 0;
 
+    do{
 #ifdef OPTIGA_LIB_DEBUG_NULL_CHECK
-    if (p_plain_text == NULL || p_encrypt_key == NULL || p_nonce == NULL ||
-        p_associated_data == NULL || p_cipher_text == NULL) {
-        return PAL_STATUS_INVALID_INPUT;
-    }
+        if (p_plain_text == NULL || p_encrypt_key == NULL || p_nonce == NULL ||
+            p_associated_data == NULL || p_cipher_text == NULL) {
+            break;
+        }
 #endif  // OPTIGA_LIB_DEBUG_NULL_CHECK
 
-    if (pal_psa_init_once() != PSA_SUCCESS) {
-        return PAL_STATUS_FAILURE;
-    }
+        if (pal_psa_init_once() != PSA_SUCCESS) {
+            break;
+        }
 
-    psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
-    psa_set_key_bits(&attr, PAL_CRYPT_AES128_KEY_BYTES * 8U);
-    psa_set_key_lifetime(&attr, PSA_KEY_LIFETIME_VOLATILE);
-    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT);
-    psa_set_key_algorithm(&attr, PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size));
+        psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
+        psa_set_key_bits(&attr, PAL_CRYPT_AES128_KEY_BYTES * 8U);
+        psa_set_key_lifetime(&attr, PSA_KEY_LIFETIME_VOLATILE);
+        psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT);
+        psa_set_key_algorithm(&attr, PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size));
 
-    st = psa_import_key(&attr, p_encrypt_key, PAL_CRYPT_AES128_KEY_BYTES, &key_id);
-    psa_reset_key_attributes(&attr);
-    if (st != PSA_SUCCESS) {
-        return PAL_STATUS_FAILURE;
-    }
+        st = psa_import_key(&attr, p_encrypt_key, PAL_CRYPT_AES128_KEY_BYTES, &key_id);
+        psa_reset_key_attributes(&attr);
+        if (st != PSA_SUCCESS) {
+            break;
+        }
 
-    /* Output layout expected by the caller: ciphertext || tag */
-    st = psa_aead_encrypt(key_id,
-                          PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size),
-                          p_nonce, nonce_length,
-                          p_associated_data, associated_data_length,
-                          p_plain_text, plain_text_length,
-                          p_cipher_text, (size_t)plain_text_length + mac_size,
-                          &out_len);
-
+        /* Output layout expected by the caller: ciphertext || tag */
+        st = psa_aead_encrypt(key_id,
+                            PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size),
+                            p_nonce, nonce_length,
+                            p_associated_data, associated_data_length,
+                            p_plain_text, plain_text_length,
+                            p_cipher_text, (size_t)plain_text_length + mac_size,
+                            &out_len);
+        if (st == PSA_SUCCESS && out_len == (size_t)plain_text_length + mac_size) {
+            return_value = PAL_STATUS_SUCCESS;
+        }
+    }while(FALSE);
     (void)psa_destroy_key(key_id);
-
-    if (st == PSA_SUCCESS && out_len == (size_t)plain_text_length + mac_size) {
-        return_value = PAL_STATUS_SUCCESS;
-    }
+    
     return return_value;
 }
 
@@ -256,46 +210,48 @@ pal_status_t pal_crypt_decrypt_aes128_ccm(pal_crypt_t *p_pal_crypt,
     psa_key_id_t        key_id  = 0;
     size_t              out_len = 0;
 
+    do{
 #ifdef OPTIGA_LIB_DEBUG_NULL_CHECK
-    if (p_cipher_text == NULL || p_decrypt_key == NULL || p_nonce == NULL ||
-        p_associated_data == NULL || p_plain_text == NULL) {
-        return PAL_STATUS_INVALID_INPUT;
-    }
+        if (p_cipher_text == NULL || p_decrypt_key == NULL || p_nonce == NULL ||
+            p_associated_data == NULL || p_plain_text == NULL) {
+            break;
+        }
 #endif  // OPTIGA_LIB_DEBUG_NULL_CHECK
 
-    if (cipher_text_length < mac_size) {
-        return PAL_STATUS_INVALID_INPUT;
-    }
+        if (cipher_text_length < mac_size) {
+            break;
+        }
 
-    if (pal_psa_init_once() != PSA_SUCCESS) {
-        return PAL_STATUS_FAILURE;
-    }
+        if (pal_psa_init_once() != PSA_SUCCESS) {
+            break;
+        }
 
-    psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
-    psa_set_key_bits(&attr, PAL_CRYPT_AES128_KEY_BYTES * 8U);
-    psa_set_key_lifetime(&attr, PSA_KEY_LIFETIME_VOLATILE);
-    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_DECRYPT);
-    psa_set_key_algorithm(&attr, PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size));
+        psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
+        psa_set_key_bits(&attr, PAL_CRYPT_AES128_KEY_BYTES * 8U);
+        psa_set_key_lifetime(&attr, PSA_KEY_LIFETIME_VOLATILE);
+        psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_DECRYPT);
+        psa_set_key_algorithm(&attr, PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size));
 
-    st = psa_import_key(&attr, p_decrypt_key, PAL_CRYPT_AES128_KEY_BYTES, &key_id);
-    psa_reset_key_attributes(&attr);
-    if (st != PSA_SUCCESS) {
-        return PAL_STATUS_FAILURE;
-    }
+        st = psa_import_key(&attr, p_decrypt_key, PAL_CRYPT_AES128_KEY_BYTES, &key_id);
+        psa_reset_key_attributes(&attr);
+        if (st != PSA_SUCCESS) {
+            break;
+        }
 
-    st = psa_aead_decrypt(key_id,
-                          PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size),
-                          p_nonce, nonce_length,
-                          p_associated_data, associated_data_length,
-                          p_cipher_text, cipher_text_length,
-                          p_plain_text, (size_t)cipher_text_length - mac_size,
-                          &out_len);
+        st = psa_aead_decrypt(key_id,
+                            PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_CCM, mac_size),
+                            p_nonce, nonce_length,
+                            p_associated_data, associated_data_length,
+                            p_cipher_text, cipher_text_length,
+                            p_plain_text, (size_t)cipher_text_length - mac_size,
+                            &out_len);
+        if (st == PSA_SUCCESS && out_len == (size_t)cipher_text_length - mac_size) {
+            return_value = PAL_STATUS_SUCCESS;
+        }            
+    }while(FALSE);
 
     (void)psa_destroy_key(key_id);
 
-    if (st == PSA_SUCCESS && out_len == (size_t)cipher_text_length - mac_size) {
-        return_value = PAL_STATUS_SUCCESS;
-    }
     return return_value;
 }
 
