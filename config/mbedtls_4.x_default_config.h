@@ -135,7 +135,7 @@
  *
  * This module provides debugging functions.
  */
-#undef MBEDTLS_DEBUG_C
+#define MBEDTLS_DEBUG_C
 
 /**
  * \def MBEDTLS_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED
@@ -284,7 +284,7 @@
  *
  * This module is required for SSL/TLS client support.
  */
-#undef MBEDTLS_SSL_CLI_C
+#define MBEDTLS_SSL_CLI_C
 
 /**
  * \def MBEDTLS_SSL_COOKIE_C
@@ -423,7 +423,7 @@
  * Comment this macro to disable storing the peer's certificate
  * after the handshake.
  */
-#undef MBEDTLS_SSL_KEEP_PEER_CERTIFICATE
+#define MBEDTLS_SSL_KEEP_PEER_CERTIFICATE
 
 /**
  * \def MBEDTLS_SSL_MAX_FRAGMENT_LENGTH
@@ -471,7 +471,7 @@
  *
  * Uncomment this macro to enable the support for TLS 1.3.
  */
-#undef MBEDTLS_SSL_PROTO_TLS1_3
+#define MBEDTLS_SSL_PROTO_TLS1_3
 
 /**
  * \def MBEDTLS_SSL_KEYING_MATERIAL_EXPORT
@@ -520,7 +520,7 @@
  *
  * Comment this macro to disable support for server name indication in SSL
  */
-#undef MBEDTLS_SSL_SERVER_NAME_INDICATION
+#define MBEDTLS_SSL_SERVER_NAME_INDICATION
 
 /**
  * \def MBEDTLS_SSL_SESSION_TICKETS
@@ -584,7 +584,7 @@
  * effect on the build.
  *
  */
-#undef MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE
+#define MBEDTLS_SSL_TLS1_3_COMPATIBILITY_MODE
 
 /**
  * \def MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED
@@ -602,7 +602,7 @@
  * effect on the build.
  *
  */
-#undef MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED
+#define MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL_ENABLED
 
 /**
  * \def MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_ENABLED
@@ -644,7 +644,7 @@
  *
  * This module is required for SSL/TLS.
  */
-#undef MBEDTLS_SSL_TLS_C
+#define MBEDTLS_SSL_TLS_C
 
  /** \} name SECTION: TLS feature selection */
 
@@ -669,7 +669,7 @@
  *
  * This module is required for the PKCS #7 parsing modules.
  */
-#define MBEDTLS_PKCS7_C
+#undef MBEDTLS_PKCS7_C
 
 /**
  * \def MBEDTLS_X509_CREATE_C
@@ -684,7 +684,7 @@
  *
  * This module is the basis for creating X.509 certificates and CSRs.
  */
-#define MBEDTLS_X509_CREATE_C
+#undef MBEDTLS_X509_CREATE_C
 
 /**
  * \def MBEDTLS_X509_CRL_PARSE_C
@@ -698,7 +698,7 @@
  *
  * This module is required for X.509 CRL parsing.
  */
-#define MBEDTLS_X509_CRL_PARSE_C
+#undef MBEDTLS_X509_CRL_PARSE_C
 
 /**
  * \def MBEDTLS_X509_CRT_WRITE_C
@@ -711,7 +711,7 @@
  *
  * This module is required for X.509 certificate creation.
  */
-#define MBEDTLS_X509_CRT_WRITE_C
+#undef MBEDTLS_X509_CRT_WRITE_C
 
 /**
  * \def MBEDTLS_X509_CSR_PARSE_C
@@ -725,7 +725,7 @@
  *
  * This module is used for reading X.509 certificate request.
  */
-#define MBEDTLS_X509_CSR_PARSE_C
+#undef MBEDTLS_X509_CSR_PARSE_C
 
 /**
  * \def MBEDTLS_X509_CSR_WRITE_C
@@ -738,7 +738,7 @@
  *
  * This module is required for X.509 certificate request writing.
  */
-#define MBEDTLS_X509_CSR_WRITE_C
+#undef MBEDTLS_X509_CSR_WRITE_C
 
 /**
  * \def MBEDTLS_X509_RSASSA_PSS_SUPPORT
@@ -751,5 +751,38 @@
  * Comment this macro to disallow using RSASSA-PSS in certificates.
  */
 #define MBEDTLS_X509_RSASSA_PSS_SUPPORT
+
+/**
+ * \def MBEDTLS_X509_USE_C
+ *
+ * Enable X.509 core for using certificates.
+ *
+ * Module:  library/x509.c
+ * Caller:  library/x509_crl.c
+ *          library/x509_crt.c
+ *          library/x509_csr.c
+ *
+ * Requires: MBEDTLS_ASN1_PARSE_C, MBEDTLS_PK_PARSE_C,
+ *           (see suites in tf_psa_default_config.h for PK/ASN1 back-end)
+ *
+ * This module is required for the X.509 parsing modules.
+ */
+#define MBEDTLS_X509_USE_C
+
+/**
+ * \def MBEDTLS_X509_CRT_PARSE_C
+ *
+ * Enable X.509 certificate parsing.
+ *
+ * Module:  library/x509_crt.c
+ * Caller:  library/ssl_tls.c
+ *          library/ssl*_client.c
+ *          library/ssl*_server.c
+ *
+ * Requires: MBEDTLS_X509_USE_C
+ *
+ * This module is required for X.509 certificate parsing.
+ */
+#define MBEDTLS_X509_CRT_PARSE_C
 
  /** \} name SECTION: X.509 feature selection */
