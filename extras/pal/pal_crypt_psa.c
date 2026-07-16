@@ -15,11 +15,11 @@
  * @{
  */
 
-#include <mbedtls/version.h>
 #include <psa/crypto.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <string.h>
+#include <tf-psa-crypto/build_info.h>
 
 #include "optiga_lib_common.h"
 #include "pal_crypt.h"
@@ -289,7 +289,7 @@ pal_status_t pal_crypt_decrypt_aes128_ccm(
 }
 
 pal_status_t pal_crypt_version(uint8_t *p_crypt_lib_version_info, uint16_t *length) {
-    const char *v = MBEDTLS_VERSION_STRING;
+    const char *v = TF_PSA_CRYPTO_VERSION_STRING_FULL;
     size_t vlen;
 
 #ifdef OPTIGA_LIB_DEBUG_NULL_CHECK

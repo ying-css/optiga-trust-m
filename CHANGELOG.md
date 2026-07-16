@@ -1,3 +1,11 @@
+## 5.8.0 (2026-07-16)
+
+* Added support for MbedTLS 4.x / TF-PSA-Crypto:
+  * New `BUILD_MBEDTLS_4` CMake option.
+  * New `config/mbedtls_4.x_default_config.h` and `extras/pal/pal_crypt_psa.c`
+    (PSA-based implementation of the shielded-connection PAL crypto).
+  * Added `external/mbedtls-4.x` submodule for the 4.x variant.
+
 ## 5.7.0 (2026-05-22)
 
 * Updated pal_os_event for Linux pal layer for better performance
