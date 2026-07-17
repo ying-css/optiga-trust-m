@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Infineon Technologies AG
+# SPDX-License-Identifier: CC0-1.0
+
 [submodule "external/mbedtls-4.x"]
 	path = external/mbedtls-4.x
 	url = https://github.com/Mbed-TLS/mbedtls.git
