@@ -16,6 +16,8 @@
 
 #include "optiga_cmd.h"
 
+#include <stdio.h>
+
 #include "optiga_comms.h"
 #include "optiga_lib_common_internal.h"
 #include "optiga_lib_logger.h"
@@ -886,6 +888,22 @@ _STATIC_H void optiga_cmd_queue_scheduler(void *p_optiga) {
 
     optiga_context_t *p_optiga_ctx = (optiga_context_t *)p_optiga;
 
+    /* Race guard */
+    if ((FALSE == p_optiga_ctx->instance_init_state)
+        || (NULL == p_optiga_ctx->p_pal_os_event_ctx)) {
+        fprintf(
+            stderr,
+            "%s:%d %s: RACE GUARD hit "
+            "(instance_init_state=%u p_pal_os_event_ctx=%p p_optiga_comms=%p)\n ",
+            __FILE__,
+            __LINE__,
+            __FUNCTION__,
+            (unsigned)p_optiga_ctx->instance_init_state,
+            (void *)p_optiga_ctx->p_pal_os_event_ctx,
+            (void *)p_optiga_ctx->p_optiga_comms
+        );
+        return;
+    }
     pal_os_event_t *my_os_event = p_optiga_ctx->p_pal_os_event_ctx;
 
     if (((0
@@ -1602,17 +1620,27 @@ optiga_cmd_create(uint8_t optiga_instance_id, callback_handler_t handler, void *
         me->optiga_context_datastore_id = g_hibernate_datastore_id_list[optiga_instance_id];
 
         if (FALSE == me->p_optiga->instance_init_state) {
-            // create pal os event
-            me->p_optiga->p_pal_os_event_ctx =
-                pal_os_event_create(optiga_cmd_queue_scheduler, me->p_optiga);
             me->p_optiga->p_optiga_comms = optiga_comms_create(optiga_cmd_execute_handler, me);
             if (NULL == me->p_optiga->p_optiga_comms) {
                 pal_os_free(me);
                 me = NULL;
                 break;
             }
+
+            // create pal os event (arms the one-shot timer)
+            me->p_optiga->p_pal_os_event_ctx =
+                pal_os_event_create(optiga_cmd_queue_scheduler, me->p_optiga);
+
             me->p_optiga->instance_init_state = TRUE;
             me->p_optiga->p_optiga_comms->p_pal_os_event_ctx = me->p_optiga->p_pal_os_event_ctx;
+
+            /* Re-arm the scheduler now that init is complete.*/
+            pal_os_event_register_callback_oneshot(
+                me->p_optiga->p_pal_os_event_ctx,
+                optiga_cmd_queue_scheduler,
+                me->p_optiga,
+                1000
+            );
         }
         // attach optiga cmd queue entry
         optiga_cmd_queue_assign_slot(me, &(me->queue_id));
